@@ -11,15 +11,14 @@ function resumeAudio() {
         audioCtx.resume();
         audioInitialise = true;
         nextNoteTime = audioCtx.currentTime;
-        scheduler(); // Démarre la musique de fond
+        scheduler(); 
     }
 }
 
-// Séquenceur pour la boucle de fond
 function scheduler() {
     while (nextNoteTime < audioCtx.currentTime + 0.1) {
         playBackgroundNote(melody[currentNote], nextNoteTime);
-        nextNoteTime += 60.0 / tempo / 2; // Croches
+        nextNoteTime += 60.0 / tempo / 2; 
         currentNote = (currentNote + 1) % melody.length;
     }
     setTimeout(scheduler, 25);
@@ -30,7 +29,6 @@ function playBackgroundNote(freq, time) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'triangle'; 
-    // La musique devient plus aiguë (une octave au dessus) quand le Boss est là
     osc.frequency.setValueAtTime(boss ? freq : freq / 2, time); 
     gain.gain.setValueAtTime(0.03, time);
     gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
@@ -90,7 +88,6 @@ let flashTimer = 0;
 let keys = {};
 let gameRunning = true;
 
-// Init décors (buissons/cailloux)
 for(let i=0; i<12; i++) {
     decors.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, w: 6, h: 6 });
 }
@@ -106,12 +103,10 @@ function spawnEnemy() {
 function update() {
     if (!gameRunning) return;
 
-    // Déplacements ZQSD
     if (keys['z'] && player.y > 0) player.y -= 2;
     if (keys['s'] && player.y < canvas.height - player.h) player.y += 2;
     if (keys['q'] && player.x > 0) player.x -= 2;
 
-    // Scrolling bloqué si le Boss est là
     if (keys['d'] && !boss) {
         if (player.x < canvas.width / 2) {
             player.x += 2;
@@ -130,12 +125,10 @@ function update() {
         }
     }
 
-    // Apparition du Boss (Tous les 5000m)
     if (distanceParcourue > 0 && distanceParcourue % 5000 === 0 && !boss) {
         boss = { x: 340, y: 120, w: 40, h: 40, hp: 20, lastShot: 0, dir: 1 };
     }
 
-    // IA du Boss
     if (boss) {
         if (boss.x > 250) boss.x -= 1; 
         boss.y += boss.dir * 1;
@@ -149,7 +142,6 @@ function update() {
         }
     }
 
-    // Gestion des packs de soin (Tous les 1000m)
     if (distanceParcourue % 1000 === 0 && distanceParcourue > 0 && healthPacks.length === 0) {
         healthPacks.push({ x: 340, y: Math.random() * (canvas.height - 20), w: 10, h: 10 });
     }
@@ -164,7 +156,6 @@ function update() {
         if (hp.x < -20) healthPacks.splice(i, 1);
     });
 
-    // IA Ennemis de base
     enemies.forEach((en, index) => {
         en.x -= 0.5; 
         if (en.x < -40) enemies.splice(index, 1);
@@ -174,11 +165,9 @@ function update() {
         }
     });
 
-    // Collisions Balles
     bullets.forEach((b, i) => {
         b.x += b.dx;
         if (b.owner === 'player') {
-            // Toucher le Boss
             if (boss && checkCol(b, boss)) {
                 boss.hp--;
                 bullets.splice(i, 1);
@@ -189,7 +178,6 @@ function update() {
                     distanceParcourue += 10; 
                 }
             }
-            // Toucher les ennemis
             enemies.forEach((en, ei) => {
                 if (checkCol(b, en)) {
                     enemies.splice(ei, 1);
@@ -199,7 +187,6 @@ function update() {
                 }
             });
         } else if (checkCol(b, player)) {
-            // Le joueur est touché
             player.hp--;
             bullets.splice(i, 1);
             playExplosionSound();
@@ -234,12 +221,10 @@ function draw() {
     if (boss) {
         ctx.fillStyle = GB_DARK;
         ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
-        // Barre de vie Boss
         ctx.fillStyle = GB_DARKEST;
         ctx.fillRect(boss.x, boss.y - 10, (boss.hp / 20) * boss.w, 4);
     }
 
-    // Dessin Joueur avec effet flash
     if (flashTimer > 0) {
         ctx.fillStyle = GB_LIGHT; 
         flashTimer--;
@@ -256,7 +241,6 @@ function draw() {
         ctx.fillRect(b.x, b.y, 4, 4);
     });
 
-    // HUD
     ctx.fillStyle = GB_DARKEST;
     ctx.font = "10px monospace";
     ctx.fillText(`SCORE: ${score}`, 10, 20);
@@ -269,9 +253,40 @@ canvas.onclick = (e) => {
     resumeAudio();
     if (!gameRunning) { location.reload(); return; }
     bullets.push({ x: player.x + 16, y: player.y + 8, dx: 4, dy: 0, owner: 'player' });
-    if (player.x > 10) player.x -= 5; // Effet de recul
+    if (player.x > 10) player.x -= 5; 
     playShootSound();
 };
+
+// --- GESTION DES BOUTONS TACTILES ---
+const setupMobileBtn = (id, key) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    
+    const startAction = (e) => {
+        e.preventDefault();
+        resumeAudio();
+        keys[key] = true;
+        if(key === 'fire') {
+            canvas.onclick();
+        }
+    };
+    
+    const stopAction = (e) => {
+        e.preventDefault();
+        keys[key] = false;
+    };
+
+    btn.addEventListener('touchstart', startAction);
+    btn.addEventListener('touchend', stopAction);
+    btn.addEventListener('mousedown', startAction);
+    btn.addEventListener('mouseup', stopAction);
+};
+
+setupMobileBtn('btn-up', 'z');
+setupMobileBtn('btn-down', 's');
+setupMobileBtn('btn-left', 'q');
+setupMobileBtn('btn-right', 'd');
+setupMobileBtn('btn-fire', 'fire');
 
 setInterval(() => { update(); draw(); }, 1000/60);
 setInterval(spawnEnemy, 1500);
