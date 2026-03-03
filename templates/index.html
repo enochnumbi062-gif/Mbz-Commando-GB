@@ -2,24 +2,217 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mbz Commando GB</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        body { background: #1a1a1a; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .game-container { border: 15px solid #333; border-radius: 10px; background: #9bbc0f; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-        canvas { border: 4px solid #0f380f; image-rendering: pixelated; }
-        .ui { color: #8bac0f; font-family: 'Courier New', monospace; margin-top: 10px; text-align: center; }
+        /* Design de la console et ambiance CRT */
+        body { 
+            background: #121212; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+            overflow: hidden;
+        }
+        .game-container { 
+            border: 12px solid #2a2a2a; 
+            border-bottom-width: 40px; /* Simule le bas d'une GameBoy */
+            border-radius: 15px; 
+            background: #9bbc0f; 
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+            position: relative;
+        }
+        canvas { 
+            border: 4px solid #0f380f; 
+            image-rendering: pixelated; 
+            display: block;
+        }
+        .ui-overlay { 
+            color: #0f380f; 
+            font-family: 'Courier New', monospace; 
+            margin-top: 15px; 
+            text-align: center;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        h2 { color: #8bac0f; margin-bottom: 5px; letter-spacing: 2px; }
+        p { color: #555; font-size: 0.8em; }
     </style>
 </head>
 <body>
+
     <div class="game-container">
         <canvas id="gameCanvas" width="320" height="288"></canvas>
     </div>
-    <div class="ui">
+
+    <div class="ui-overlay">
         <h2>MBZ COMMANDO GB</h2>
-        <p>[ZQSD] MOUVEMENT - [CLIC] FEU</p>
+        <p>[ZQSD] Marcher - [CLIC] Tirer</p>
     </div>
-    <script src="{{ url_for('static', filename='js/audio.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/engine.js') }}"></script>
+
+    <script>
+        // --- CONFIGURATION AUDIO (8-BIT SYNTH) ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        let audioStarted = false;
+
+        function playSound(freq, type, duration, volume) {
+            if (!audioStarted) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // --- MOTEUR DE JEU ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Palette GameBoy
+        const GB_DARKEST = '#0f380f';
+        const GB_DARK = '#306230';
+        const GB_LIGHT = '#8bac0f';
+        const GB_BG = '#9bbc0f';
+
+        let player = { x: 40, y: 130, w: 16, h: 16, hp: 5 };
+        let bullets = [];
+        let enemies = [];
+        let score = 0;
+        let keys = {};
+        let gameRunning = true;
+
+        // Entrées clavier
+        window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
+        window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
+
+        function spawnEnemy() {
+            if(!gameRunning) return;
+            enemies.push({ 
+                x: canvas.width + 20, 
+                y: Math.random() * (canvas.height - 40) + 20, 
+                w: 16, h: 16, 
+                lastShot: Date.now() + Math.random() * 1000 
+            });
+        }
+
+        function checkCol(a, b) {
+            return a.x < b.x + b.w && a.x + 5 > b.x && a.y < b.y + b.h && a.y + 5 > b.y;
+        }
+
+        function update() {
+            if (!gameRunning) return;
+
+            // Déplacement
+            if ((keys['z'] || keys['arrowup']) && player.y > 0) player.y -= 2.5;
+            if ((keys['s'] || keys['arrowdown']) && player.y < canvas.height - player.h) player.y += 2.5;
+            if ((keys['q'] || keys['arrowleft']) && player.x > 0) player.x -= 2.5;
+            if ((keys['d'] || keys['arrowright']) && player.x < canvas.width - player.w) player.x += 2.5;
+
+            // Ennemis & Tirs ennemis
+            enemies.forEach((en, ei) => {
+                en.x -= 1.2; 
+                if (en.x < -20) enemies.splice(ei, 1);
+
+                // IA : Tirer vers le joueur
+                if (Date.now() - en.lastShot > 2500) {
+                    bullets.push({ x: en.x, y: en.y + 8, dx: -3, dy: 0, owner: 'enemy' });
+                    en.lastShot = Date.now();
+                }
+            });
+
+            // Balles & Collisions
+            bullets.forEach((b, bi) => {
+                b.x += b.dx;
+                
+                if (b.owner === 'player') {
+                    enemies.forEach((en, ei) => {
+                        if (checkCol(b, en)) {
+                            enemies.splice(ei, 1);
+                            bullets.splice(bi, 1);
+                            score += 100;
+                            playSound(150, 'sawtooth', 0.2, 0.2); // Explosion
+                        }
+                    });
+                } else {
+                    if (checkCol(b, player)) {
+                        player.hp--;
+                        bullets.splice(bi, 1);
+                        playSound(60, 'square', 0.3, 0.3); // Dégât
+                        if (player.hp <= 0) gameRunning = false;
+                    }
+                }
+            });
+
+            // Nettoyage balles hors écran
+            bullets = bullets.filter(b => b.x > -50 && b.x < canvas.width + 50);
+        }
+
+        function draw() {
+            // Fond
+            ctx.fillStyle = GB_BG;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!gameRunning) {
+                ctx.fillStyle = GB_DARKEST;
+                ctx.font = "20px Courier New";
+                ctx.fillText("MISSION ÉCHOUÉE", 70, 140);
+                ctx.font = "12px Courier New";
+                ctx.fillText("SCORE FINAL: " + score, 100, 170);
+                return;
+            }
+
+            // Joueur
+            ctx.fillStyle = GB_DARKEST;
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+
+            // Ennemis
+            ctx.fillStyle = GB_DARK;
+            enemies.forEach(en => ctx.fillRect(en.x, en.y, en.w, en.h));
+
+            // Balles
+            bullets.forEach(b => {
+                ctx.fillStyle = (b.owner === 'player') ? GB_DARKEST : GB_DARK;
+                ctx.fillRect(b.x, b.y, 4, 4);
+            });
+
+            // Interface
+            ctx.fillStyle = GB_DARKEST;
+            ctx.font = "bold 12px Courier New";
+            ctx.fillText("SC:" + score, 10, 20);
+            ctx.fillText("HP:" + "♥".repeat(player.hp), 10, 35);
+        }
+
+        // Interaction
+        canvas.onclick = () => {
+            if (!audioStarted) {
+                audioCtx.resume();
+                audioStarted = true;
+            }
+            if (!gameRunning) {
+                location.reload();
+                return;
+            }
+            // Tir
+            bullets.push({ x: player.x + 16, y: player.y + 6, dx: 5, dy: 0, owner: 'player' });
+            playSound(500, 'square', 0.1, 0.1); // Bruit de tir
+        };
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        setInterval(spawnEnemy, 1800);
+        loop();
+    </script>
 </body>
 </html>
