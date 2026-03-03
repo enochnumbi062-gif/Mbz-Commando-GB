@@ -53,16 +53,20 @@ let bullets = [];
 let enemies = [];
 let score = 0;
 let keys = {};
+let gameRunning = true; // Variable pour gérer l'état du jeu
 
 // Contrôles Clavier
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
 window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
 function spawnEnemy() {
+    if (!gameRunning) return;
     enemies.push({ x: 320, y: Math.random() * (canvas.height - 20), w: 16, h: 16, lastShot: 0 });
 }
 
 function update() {
+    if (!gameRunning) return;
+
     // Déplacement joueur (ZQSD)
     if (keys['z'] && player.y > 0) player.y -= 2;
     if (keys['s'] && player.y < canvas.height - player.h) player.y += 2;
@@ -101,6 +105,7 @@ function update() {
             bullets.splice(i, 1);
             playExplosionSound();
             if(player.hp <= 0) {
+                gameRunning = false;
                 alert("MISSION ÉCHOUÉE - Score: " + score);
                 location.reload(); 
             }
@@ -137,10 +142,29 @@ function draw() {
     ctx.fillText(`VIE: ${player.hp}`, 10, 35);
 }
 
-// Tir & Activation Audio
+// --- FUSION CLIC : TIR & RECUL ---
 canvas.onclick = (e) => {
     resumeAudio();
-    bullets.push({ x: player.x + 16, y: player.y + 8, dx: 4, dy: 0, owner: 'player' });
+    
+    if (!gameRunning) {
+        location.reload();
+        return;
+    }
+
+    // 1. Création de la balle
+    bullets.push({ 
+        x: player.x + 16, 
+        y: player.y + 8, 
+        dx: 4, 
+        dy: 0, 
+        owner: 'player' 
+    });
+
+    // 2. EFFET DE RECUL
+    // On repousse le joueur vers la gauche de 5 pixels lors du tir
+    if (player.x > 5) player.x -= 5; 
+
+    // 3. Son de tir
     playShootSound();
 };
 
