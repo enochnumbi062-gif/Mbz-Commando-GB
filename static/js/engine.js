@@ -2,7 +2,7 @@
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 let audioInitialise = false;
 let nextNoteTime = 0;
-const tempo = 120; // BPM
+const tempo = 120; 
 const melody = [261.63, 293.66, 311.13, 349.23, 392.00, 311.13, 349.23, 261.63]; 
 let currentNote = 0;
 
@@ -85,6 +85,7 @@ let boss = null;
 let score = 0;
 let distanceParcourue = 0; 
 let flashTimer = 0; 
+let tripleShot = false; // Le Power-up du Boss
 let keys = {};
 let gameRunning = true;
 
@@ -103,38 +104,36 @@ function spawnEnemy() {
 function update() {
     if (!gameRunning) return;
 
-    if (keys['z'] && player.y > 0) player.y -= 2;
-    if (keys['s'] && player.y < canvas.height - player.h) player.y += 2;
-    if (keys['q'] && player.x > 0) player.x -= 2;
+    if (keys['z'] && player.y > 0) player.y -= 2.5;
+    if (keys['s'] && player.y < canvas.height - player.h) player.y += 2.5;
+    if (keys['q'] && player.x > 0) player.x -= 2.5;
 
     if (keys['d'] && !boss) {
         if (player.x < canvas.width / 2) {
-            player.x += 2;
+            player.x += 2.5;
         } else {
             distanceParcourue += 1;
-            enemies.forEach(en => en.x -= 2); 
-            bullets.forEach(b => b.x -= 2);
-            healthPacks.forEach(hp => hp.x -= 2);
+            enemies.forEach(en => en.x -= 2.5); 
+            bullets.forEach(b => b.x -= 2.5);
+            healthPacks.forEach(hp => hp.x -= 2.5);
             decors.forEach(d => {
-                d.x -= 2;
-                if (d.x < -10) {
-                    d.x = canvas.width + 10;
-                    d.y = Math.random() * canvas.height;
-                }
+                d.x -= 2.5;
+                if (d.x < -10) { d.x = canvas.width + 10; d.y = Math.random() * canvas.height; }
             });
         }
     }
 
-    if (distanceParcourue > 0 && distanceParcourue % 5000 === 0 && !boss) {
-        boss = { x: 340, y: 120, w: 40, h: 40, hp: 20, lastShot: 0, dir: 1 };
+    // Condition du Boss (6000 points)
+    if (score >= 6000 && !boss && !tripleShot) {
+        boss = { x: 340, y: 120, w: 40, h: 40, hp: 30, lastShot: 0, dir: 1 };
     }
 
     if (boss) {
-        if (boss.x > 250) boss.x -= 1; 
-        boss.y += boss.dir * 1;
-        if (boss.y < 20 || boss.y > 240) boss.dir *= -1;
+        if (boss.x > 240) boss.x -= 1; 
+        boss.y += boss.dir * 2;
+        if (boss.y < 20 || boss.y > 230) boss.dir *= -1;
 
-        if (Date.now() - boss.lastShot > 1500) {
+        if (Date.now() - boss.lastShot > 1100) {
             bullets.push({ x: boss.x, y: boss.y + 10, dx: -3, dy: 0, owner: 'enemy' });
             bullets.push({ x: boss.x, y: boss.y + 20, dx: -3, dy: 0, owner: 'enemy' });
             bullets.push({ x: boss.x, y: boss.y + 30, dx: -3, dy: 0, owner: 'enemy' });
@@ -142,24 +141,20 @@ function update() {
         }
     }
 
-    if (distanceParcourue % 1000 === 0 && distanceParcourue > 0 && healthPacks.length === 0) {
+    if (score > 0 && score % 1500 === 0 && healthPacks.length === 0) {
         healthPacks.push({ x: 340, y: Math.random() * (canvas.height - 20), w: 10, h: 10 });
     }
 
     healthPacks.forEach((hp, i) => {
-        if (checkCol(player, hp)) {
-            player.hp++; 
-            flashTimer = 15;
-            healthPacks.splice(i, 1);
-            playShootSound(); 
-        }
-        if (hp.x < -20) healthPacks.splice(i, 1);
+        if (checkCol(player, hp)) { player.hp++; flashTimer = 15; healthPacks.splice(i, 1); playShootSound(); }
     });
 
     enemies.forEach((en, index) => {
-        en.x -= 0.5; 
+        let bonusVitesse = Math.floor(score / 1000) * 0.3;
+        en.x -= (1 + bonusVitesse); 
         if (en.x < -40) enemies.splice(index, 1);
-        if (Date.now() - en.lastShot > 2000) {
+        let delaiTir = Math.max(900, 2000 - (score / 12));
+        if (Date.now() - en.lastShot > delaiTir) {
             bullets.push({ x: en.x, y: en.y + 8, dx: -3, dy: 0, owner: 'enemy' });
             en.lastShot = Date.now();
         }
@@ -167,35 +162,20 @@ function update() {
 
     bullets.forEach((b, i) => {
         b.x += b.dx;
+        b.y += b.dy || 0;
         if (b.owner === 'player') {
             if (boss && checkCol(b, boss)) {
-                boss.hp--;
-                bullets.splice(i, 1);
-                playExplosionSound();
-                if (boss.hp <= 0) {
-                    boss = null;
-                    score += 5000;
-                    distanceParcourue += 10; 
-                }
+                boss.hp--; bullets.splice(i, 1); playExplosionSound();
+                if (boss.hp <= 0) { boss = null; score += 2000; tripleShot = true; playExplosionSound(); }
             }
             enemies.forEach((en, ei) => {
-                if (checkCol(b, en)) {
-                    enemies.splice(ei, 1);
-                    bullets.splice(i, 1);
-                    score += 100;
-                    playExplosionSound();
-                }
+                if (checkCol(b, en)) { enemies.splice(ei, 1); bullets.splice(i, 1); score += 100; playExplosionSound(); }
             });
         } else if (checkCol(b, player)) {
-            player.hp--;
-            bullets.splice(i, 1);
-            playExplosionSound();
-            if(player.hp <= 0) {
-                gameRunning = false;
-                alert("MISSION ÉCHOUÉE - Score: " + score + " | Distance: " + distanceParcourue + "m");
-                location.reload(); 
-            }
+            player.hp--; bullets.splice(i, 1); playExplosionSound();
+            if(player.hp <= 0) { gameRunning = false; alert("MORT AU COMBAT - SCORE: " + score); location.reload(); }
         }
+        if(b.x > 400 || b.x < -50) bullets.splice(i, 1);
     });
 }
 
@@ -206,31 +186,20 @@ function checkCol(a, b) {
 function draw() {
     ctx.fillStyle = GB_BG;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.fillStyle = GB_LIGHT;
     decors.forEach(d => ctx.fillRect(d.x, d.y, d.w, d.h));
 
     healthPacks.forEach(hp => {
-        ctx.fillStyle = GB_LIGHT;
-        ctx.fillRect(hp.x, hp.y, hp.w, hp.h);
-        ctx.fillStyle = GB_DARKEST;
-        ctx.fillRect(hp.x + 4, hp.y + 2, 2, 6);
-        ctx.fillRect(hp.x + 2, hp.y + 4, 6, 2);
+        ctx.fillStyle = GB_LIGHT; ctx.fillRect(hp.x, hp.y, hp.w, hp.h);
+        ctx.fillStyle = GB_DARKEST; ctx.fillRect(hp.x + 4, hp.y + 2, 2, 6); ctx.fillRect(hp.x + 2, hp.y + 4, 6, 2);
     });
 
     if (boss) {
-        ctx.fillStyle = GB_DARK;
-        ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
-        ctx.fillStyle = GB_DARKEST;
-        ctx.fillRect(boss.x, boss.y - 10, (boss.hp / 20) * boss.w, 4);
+        ctx.fillStyle = GB_DARK; ctx.fillRect(boss.x, boss.y, boss.w, boss.h);
+        ctx.fillStyle = GB_DARKEST; ctx.fillRect(boss.x, boss.y - 10, (boss.hp / 30) * boss.w, 4);
     }
 
-    if (flashTimer > 0) {
-        ctx.fillStyle = GB_LIGHT; 
-        flashTimer--;
-    } else {
-        ctx.fillStyle = GB_DARKEST;
-    }
+    if (flashTimer > 0) { ctx.fillStyle = GB_LIGHT; flashTimer--; } else { ctx.fillStyle = GB_DARKEST; }
     ctx.fillRect(player.x, player.y, player.w, player.h);
     
     ctx.fillStyle = GB_DARK;
@@ -244,49 +213,46 @@ function draw() {
     ctx.fillStyle = GB_DARKEST;
     ctx.font = "10px monospace";
     ctx.fillText(`SCORE: ${score}`, 10, 20);
-    ctx.fillText(`DIST : ${distanceParcourue}m`, 10, 35);
-    ctx.fillText(`VIE  : ${"♥".repeat(player.hp)}`, 10, 50);
-    if(boss) ctx.fillText(`BOSS HP: ${boss.hp}`, 10, 65);
+    ctx.fillText(`VIE  : ${"♥".repeat(Math.max(0, player.hp))}`, 10, 35);
+    if(boss) ctx.fillText(`BOSS HP: ${boss.hp}`, 10, 50);
+    else if(tripleShot) ctx.fillText(`POWER-UP: TRIPLE TIR`, 10, 50);
+    else if(score < 6000) ctx.fillText(`OBJECTIF BOSS: 6000`, 10, 50);
 }
 
 canvas.onclick = (e) => {
     resumeAudio();
-    if (!gameRunning) { location.reload(); return; }
+    if (!gameRunning) return;
+    
+    // Tir principal
     bullets.push({ x: player.x + 16, y: player.y + 8, dx: 4, dy: 0, owner: 'player' });
-    if (player.x > 10) player.x -= 5; 
+    
+    // Bonus Triple Tir si acquis auprès du boss
+    if (tripleShot) {
+        bullets.push({ x: player.x + 16, y: player.y + 8, dx: 4, dy: -1.5, owner: 'player' });
+        bullets.push({ x: player.x + 16, y: player.y + 8, dx: 4, dy: 1.5, owner: 'player' });
+    }
+
+    if (player.x > 10) player.x -= 2; 
     playShootSound();
 };
 
-// --- GESTION DES BOUTONS TACTILES ---
 const setupMobileBtn = (id, key) => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    
-    const startAction = (e) => {
-        e.preventDefault();
-        resumeAudio();
-        keys[key] = true;
-        if(key === 'fire') {
-            canvas.onclick();
-        }
-    };
-    
-    const stopAction = (e) => {
-        e.preventDefault();
-        keys[key] = false;
-    };
-
-    btn.addEventListener('touchstart', startAction);
-    btn.addEventListener('touchend', stopAction);
-    btn.addEventListener('mousedown', startAction);
-    btn.addEventListener('mouseup', stopAction);
+    const btn = document.getElementById(id); if (!btn) return;
+    const startAction = (e) => { e.preventDefault(); resumeAudio(); keys[key] = true; if(key === 'fire') canvas.onclick(); };
+    const stopAction = (e) => { e.preventDefault(); keys[key] = false; };
+    btn.addEventListener('touchstart', startAction); btn.addEventListener('touchend', stopAction);
+    btn.addEventListener('mousedown', startAction); btn.addEventListener('mouseup', stopAction);
 };
 
-setupMobileBtn('btn-up', 'z');
-setupMobileBtn('btn-down', 's');
-setupMobileBtn('btn-left', 'q');
-setupMobileBtn('btn-right', 'd');
+setupMobileBtn('btn-up', 'z'); setupMobileBtn('btn-down', 's');
+setupMobileBtn('btn-left', 'q'); setupMobileBtn('btn-right', 'd');
 setupMobileBtn('btn-fire', 'fire');
 
 setInterval(() => { update(); draw(); }, 1000/60);
-setInterval(spawnEnemy, 1500);
+
+function boucleSpawn() {
+    spawnEnemy();
+    let delai = Math.max(350, 1500 - (score / 8));
+    setTimeout(boucleSpawn, delai);
+}
+boucleSpawn();
