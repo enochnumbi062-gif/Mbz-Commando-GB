@@ -51,9 +51,21 @@ const GB_BG = '#9bbc0f';
 let player = { x: 50, y: 144, w: 16, h: 16, hp: 3 };
 let bullets = [];
 let enemies = [];
+let decors = []; // Pour les buissons et rochers
 let score = 0;
+let distanceParcourue = 0; // Suivi de la progression
 let keys = {};
-let gameRunning = true; // Variable pour gérer l'état du jeu
+let gameRunning = true;
+
+// Générer quelques décors au début pour remplir la "jungle"
+for(let i=0; i<12; i++) {
+    decors.push({ 
+        x: Math.random() * canvas.width, 
+        y: Math.random() * canvas.height, 
+        w: 6, 
+        h: 6 
+    });
+}
 
 // Contrôles Clavier
 window.onkeydown = (e) => keys[e.key.toLowerCase()] = true;
@@ -61,22 +73,47 @@ window.onkeyup = (e) => keys[e.key.toLowerCase()] = false;
 
 function spawnEnemy() {
     if (!gameRunning) return;
-    enemies.push({ x: 320, y: Math.random() * (canvas.height - 20), w: 16, h: 16, lastShot: 0 });
+    // Spawn à droite, juste hors écran
+    enemies.push({ x: 340, y: Math.random() * (canvas.height - 20), w: 16, h: 16, lastShot: 0 });
 }
 
 function update() {
     if (!gameRunning) return;
 
-    // Déplacement joueur (ZQSD)
+    // Déplacement Z et S (Haut/Bas)
     if (keys['z'] && player.y > 0) player.y -= 2;
     if (keys['s'] && player.y < canvas.height - player.h) player.y += 2;
+    
+    // Déplacement Q (Gauche)
     if (keys['q'] && player.x > 0) player.x -= 2;
-    if (keys['d'] && player.x < canvas.width - player.w) player.x += 2;
 
-    // IA Ennemis
+    // --- LOGIQUE DE SCROLLING (Avancer vers la droite avec D) ---
+    if (keys['d']) {
+        if (player.x < canvas.width / 2) {
+            // Le joueur avance normalement jusqu'au milieu de l'écran
+            player.x += 2;
+        } else {
+            // Le joueur est au milieu : on fait défiler le monde entier !
+            distanceParcourue += 1;
+            
+            // On fait reculer les ennemis, les balles et les décors
+            enemies.forEach(en => en.x -= 2); 
+            bullets.forEach(b => b.x -= 2);
+            decors.forEach(d => {
+                d.x -= 2;
+                // Si un buisson sort à gauche, on le remet à droite
+                if (d.x < -10) {
+                    d.x = canvas.width + 10;
+                    d.y = Math.random() * canvas.height;
+                }
+            });
+        }
+    }
+
+    // IA Ennemis (Vitesse de base + comportement de tir)
     enemies.forEach((en, index) => {
-        en.x -= 1; 
-        if (en.x < -20) enemies.splice(index, 1);
+        en.x -= 0.5; // Vitesse de marche lente
+        if (en.x < -40) enemies.splice(index, 1);
 
         if (Date.now() - en.lastShot > 2000) {
             bullets.push({ x: en.x, y: en.y + 8, dx: -3, dy: 0, owner: 'enemy' });
@@ -84,7 +121,7 @@ function update() {
         }
     });
 
-    // Physique des balles
+    // Physique des balles et collisions
     bullets.forEach((b, i) => {
         b.x += b.dx;
         
@@ -106,7 +143,7 @@ function update() {
             playExplosionSound();
             if(player.hp <= 0) {
                 gameRunning = false;
-                alert("MISSION ÉCHOUÉE - Score: " + score);
+                alert("MISSION ÉCHOUÉE - Score: " + score + " | Distance: " + distanceParcourue + "m");
                 location.reload(); 
             }
         }
@@ -118,8 +155,13 @@ function checkCol(a, b) {
 }
 
 function draw() {
+    // Fond GameBoy
     ctx.fillStyle = GB_BG;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Dessiner les décors (buissons clairs)
+    ctx.fillStyle = GB_LIGHT;
+    decors.forEach(d => ctx.fillRect(d.x, d.y, d.w, d.h));
 
     // Dessin Joueur
     ctx.fillStyle = GB_DARKEST;
@@ -135,11 +177,12 @@ function draw() {
         ctx.fillRect(b.x, b.y, 4, 4);
     });
 
-    // Score & HP
+    // HUD : Score, Distance & Vie
     ctx.fillStyle = GB_DARKEST;
     ctx.font = "10px monospace";
     ctx.fillText(`SCORE: ${score}`, 10, 20);
-    ctx.fillText(`VIE: ${player.hp}`, 10, 35);
+    ctx.fillText(`DIST : ${distanceParcourue}m`, 10, 35);
+    ctx.fillText(`VIE  : ${player.hp}`, 10, 50);
 }
 
 // --- FUSION CLIC : TIR & RECUL ---
@@ -151,7 +194,7 @@ canvas.onclick = (e) => {
         return;
     }
 
-    // 1. Création de la balle
+    // 1. Création de la balle du joueur
     bullets.push({ 
         x: player.x + 16, 
         y: player.y + 8, 
@@ -161,13 +204,13 @@ canvas.onclick = (e) => {
     });
 
     // 2. EFFET DE RECUL
-    // On repousse le joueur vers la gauche de 5 pixels lors du tir
-    if (player.x > 5) player.x -= 5; 
+    // Le joueur est repoussé vers la gauche pour chaque tir
+    if (player.x > 10) player.x -= 5; 
 
     // 3. Son de tir
     playShootSound();
 };
 
-// Boucle
+// Lancement des boucles
 setInterval(() => { update(); draw(); }, 1000/60);
 setInterval(spawnEnemy, 1500);
